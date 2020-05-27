@@ -1,4 +1,5 @@
 ###################################################################################################
+# SSH Elastic Search Subscription
 # Date: 05/26/2020
 # Version: 1.1
 # Author: Yixing Qiu (yixqiu)
@@ -17,16 +18,14 @@ import threading
 import datetime
 import paramiko
 from netmiko import ConnectHandler
-from elasticsearch_uploader import ElasticSearchUploader
 from time import sleep
 from elasticsearch import Elasticsearch, helpers, ElasticsearchException
 from urllib3.exceptions import ReadTimeoutError
 from typing import List, Set, Dict, Union
 
-
 class SSHConnection(threading.Thread):
     def __init__(self, host, log, lock, username, password, duration, cmd_list, elastic, output, hostname,
-                 elasticsearch_uploader):
+                 sshElasticSearchUploader):
         threading.Thread.__init__(self)
         self.host = host
         self.username = username
@@ -38,7 +37,7 @@ class SSHConnection(threading.Thread):
         self.elastic = elastic
         self.output = output
         self.hostname = hostname
-        self.elasticsearch_uploader = elasticsearch_uploader
+        self.sshElasticSearchUploader = sshElasticSearchUploader
 
     def run(self):
         logging.getLogger('paramiko').setLevel(logging.WARNING)
@@ -97,7 +96,7 @@ class SSHConnection(threading.Thread):
                     data['ssh_result_size'] = sys.getsizeof(cmd_result)
 
                     # Put dict in the ElasticSearch upload list
-                    self.elasticsearch_uploader.data_list.append(data)
+                    self.sshElasticSearchUploader.data_list.append(data)
 
                 # Output cmd execution time to a .csv file
                 if self.output:
@@ -130,9 +129,64 @@ class SSHConnection(threading.Thread):
 #                self.log.info('%s is releasing lock, closing ssh session to %s' % (threading.current_thread().name, self.host))
 #                self.log.info('%s ended succesfully' % (threading.current_thread().#name#))
 
+class SSHElasticSearchUploader(threading.Thread):
+    def __init__(self, bulksize, index, log):
+        threading.Thread.__init__(self)
+        self.bulksize = bulksize
+        self.index = index
+        self.log = log
+        self.data_list = []
+
+    def run(self):
+        es = Elasticsearch([{'host': '2.2.2.1', 'port': 9200}], timeout=600)
+        while True:
+            self.log.info("Size of the data list: " + str(len(self.data_list)))
+
+            # Upload data to Elastic Search when data_list size passes bulksize
+            if len(self.data_list) >= self.bulksize:
+
+                try:
+                    # Check if the index already exists. If not, initialize one
+                    index_name = self.index + '-' + datetime.datetime.now().strftime('%Y.%m.%d')
+                    if not es.indices.exists(index=index_name):
+                        self.log.info("Index not exists. Creating one.")
+                        request_body = {
+                            "settings": {
+                                "index": {
+                                    "max_docvalue_fields_search": "1000"
+                                }
+                            },
+                            'mappings': {
+                                '_doc': {
+                                    'properties': {
+                                        '@timestamp': {'type': 'date'}
+                                    }
+                                }
+                            }
+                        }
+                        es.indices.create(index=index_name, body=request_body, include_type_name=True)
+                        self.log.info("New index is created: " + index_name)
+
+                    # Upload the data list to Elastic Search
+                    self.log.info("Uploading the data list to Elastic Search")
+                    data_list_tmp = self.data_list.copy()
+                    self.data_list.clear()
+                    #                print(data_list_tmp)
+                    helpers.bulk(es, data_list_tmp, index=index_name, doc_type='_doc')
+                    self.log.info("Upload done")
+
+                except ElasticsearchException as e:
+                    self.log.error(e)
+                except ReadTimeoutError as e:
+                    self.log("read timeout error")
+                    self.log.error(e)
+
+            time.sleep(10)  # check every 10 seconds
+
+
 class SSHTestcase(object):
     def __init__(self, username, password, host, semaphore, duration, interval, cmd_list, elastic, output, hostname,
-                 log, elasticsearch_uploader):
+                 log, sshElasticSearchUploader):
         self.user = username
         self.password = password
         self.host = host
@@ -146,7 +200,7 @@ class SSHTestcase(object):
         self.threads = []
         self.hostname = hostname
         self.log = log
-        self.elasticsearch_uploader = elasticsearch_uploader
+        self.sshElasticSearchUploader = sshElasticSearchUploader
 
     def run_testcase(self):
         while True:
@@ -154,7 +208,7 @@ class SSHTestcase(object):
                 self.threads = []
                 self.threads.append((SSHConnection(self.host, self.log, self.sem, self.user, self.password,
                                                    self.duration, self.cmd_list, self.elastic, self.output,
-                                                   self.hostname, self.elasticsearch_uploader)))
+                                                   self.hostname, self.sshElasticSearchUploader)))
             for thread in self.threads:
                 thread.start()
                 time.sleep(self.interval)
@@ -170,10 +224,6 @@ class SSHTestcase(object):
         logger = logging.basicConfig(format=formatting, level=logging.INFO)
         log = logging.getLogger('SSH Stress')
         return log
-
-
-data_list = []
-
 
 def main():
     ############################# INITIALIZATION #############################
@@ -247,12 +297,12 @@ def main():
 
     # Start the SSH Elastic Search Uploader
     index = 'ssh_stress'
-    elasticsearch_uploader = ElasticSearchUploader('2.2.2.1', 9200, args.bulksize, index, log)
-    elasticsearch_uploader.start()
+    sshElasticSearchUploader = SSHElasticSearchUploader(args.bulksize, index, log)
+    sshElasticSearchUploader.start()
 
     # Start SSH Sessions
     sshTestcase = SSHTestcase(args.username, args.password, args.host, args.sem, args.duration, args.interval, cmd_list,
-                              elastic, output, hostname, log, elasticsearch_uploader)
+                              elastic, output, hostname, log, sshElasticSearchUploader)
     sshTestcase.run_testcase()
 
 
