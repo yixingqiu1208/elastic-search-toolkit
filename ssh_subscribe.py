@@ -238,11 +238,12 @@ def main():
             result = ch.send_command(cmd)
             hostname = result.split("hostname", 1)[1].rstrip("\n").strip()
     except paramiko.SSHException as e:
-        log.error(e)
-        return
+        log.info(e)
+        log.info("Connection failed. Will continue with the negative testcase")
+#        return
     if hostname == '':
-        log.error("Cannot get the hostname. Exit")
-        return
+        log.info("Cannot get the hostname. Using empty string")
+#        return
     log.info("Router hostname: " + hostname)
 
     # Start the SSH Elastic Search Uploader
