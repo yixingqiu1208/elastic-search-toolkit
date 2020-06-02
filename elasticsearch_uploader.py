@@ -9,6 +9,7 @@ import traceback
 import copy
 import logging
 import threading
+import datetime
 from time import sleep
 from elasticsearch import Elasticsearch, helpers, ElasticsearchException
 from urllib3.exceptions import ReadTimeoutError

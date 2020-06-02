@@ -150,24 +150,21 @@ class SSHTestcase(object):
 
     def run_testcase(self):
         while True:
-            time.sleep(1)
+#            time.sleep(1)
 #            self.log.info("Number of active threads: " + str(threading.active_count()))
             for _ in range(self.int_sem):
-                try:
-                    self.threads = []
-                    self.threads.append((SSHConnection(self.host, self.log, self.sem, self.user, self.password,
+                self.threads = []
+                self.threads.append((SSHConnection(self.host, self.log, self.sem, self.user, self.password,
                                                    self.duration, self.cmd_list, self.elastic, self.output,
-                                                   self.hostname, self.sshElasticSearchUploader)))
-                except:
-                    self.log.error("SSH thread initializing failed")
+                                                   self.hostname, self.elasticsearch_uploader)))
 
             if threading.active_count() <= self.int_sem * 2:
                 for thread in self.threads:
-                    try:
-                        thread.start()
-                        time.sleep(self.interval)
-                    except:
-                        self.log.error("SSH testcase failed")
+                    thread.start()
+                    time.sleep(self.interval)
+            else:
+                self.log.info("Thread number: " + str(threading.active_count()) + " reaches the limit. Wait 10s.")
+                time.sleep(10)
 
 
     #            main_thread = threading.currentThread()
