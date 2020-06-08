@@ -23,6 +23,7 @@ class ElasticSearchUploader(threading.Thread):
         self.bulksize = bulksize
         self.index = index
         self.data_list = []
+        self.timeout = kwargs.get('timeout', 600)
         self.log = kwargs.get('log', None)
         if self.log is None:
             # init logger
@@ -31,7 +32,7 @@ class ElasticSearchUploader(threading.Thread):
             self.log = logging.getLogger('ElasticSearchUploader Log')
 
     def run(self):
-        es = Elasticsearch([{'host': self.elasticsearch_ip, 'port': self.port}], timeout=600)
+        es = Elasticsearch([{'host': self.elasticsearch_ip, 'port': self.port}], timeout=self.timeout)
         while True:
             self.log.info("Size of the data list: " + str(len(self.data_list)))
 
