@@ -72,7 +72,7 @@ class ElasticSearchUploader(threading.Thread):
                 except ElasticsearchException as e:
                     self.log.error(e)
                 except ReadTimeoutError as e:
-                    self.log("read timeout error")
+                    self.log.error("read timeout error")
                     self.log.error(e)
 
             sleep(10)  # check every 10 seconds
