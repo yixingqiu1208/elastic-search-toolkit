@@ -44,7 +44,7 @@ class SSHConnection(threading.Thread):
         logging.getLogger('paramiko').setLevel(logging.WARNING)
         with self.lock:
             #            self.log.info('%s is acquiring lock, creating an ssh session to %s' % (threading.current_thread().name, self.host))
-            err_logname = 'error-' + self.host
+            err_logname = 'error-' + self.host + '-' + datetime.datetime.now().strftime('%Y.%m.%d')
             runtime_logname = 'runtime-' + self.host + '.csv'
             try:
                 with ConnectHandler(ip=self.host,
